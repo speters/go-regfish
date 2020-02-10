@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -46,14 +45,16 @@ type (
 	Domain struct {
 		RRs map[uint]RR
 		//Whois Whois
-		uri  string
-		Name DomainName
+		uri      string
+		Name     DomainName
+		Contract map[string]string
 	}
 	Domains map[DomainName]Domain
 )
 
 const baseURL = "https://www.regfish.de"
 
+// included from credentials.go:
 // const username = ""
 // const password = ""
 
@@ -229,7 +230,9 @@ func (rf *RF) get_domain(domain_name DomainName) (Domain, error) {
 	}
 
 	if response.Request.URL.String() != origuri {
-		return Domain{}, fmt.Errorf("Got redirected. Non existing domain?")
+		err := fmt.Errorf("Got redirected. Non existing domain?")
+		log.Println(err)
+		return Domain{}, err
 	}
 
 	domain = Domain{Name: domain_name, uri: uripart}
@@ -243,11 +246,11 @@ func (rf *RF) get_domain(domain_name DomainName) (Domain, error) {
 		if len(idslice) == 2 && idslice[0] == "a" {
 			idi, _ := strconv.ParseUint(idslice[1], 10, 32)
 			id = uint(idi)
-			log.Println(id)
 
 			rrname := strings.TrimSpace(s.Find(fmt.Sprintf("#rr_%v_name", id)).Text())
 			rrttl, _ := strconv.ParseUint(strings.TrimSpace(s.Find(fmt.Sprintf("#rr_%v_ttl", id)).Text()), 10, 32)
 			if rrttl == 0 {
+				// 86400 is the standard ttl on Regfish.de
 				rrttl = 86400
 			}
 			rrtype := strings.TrimSpace(s.Find(fmt.Sprintf("#rr_%v_type", id)).Text())
@@ -263,7 +266,63 @@ func (rf *RF) get_domain(domain_name DomainName) (Domain, error) {
 		}
 	})
 
+	if val, ok := rf.Domains[domain_name]; ok {
+		val.RRs = domain.RRs
+		val.Name = domain_name
+		val.uri = uripart
+
+		rf.Domains[domain_name] = val
+	}
 	return domain, nil
+}
+
+func chop(s string, b byte) string {
+	if len(s) > 0 && s[len(s)-1] == b {
+		s = s[0 : len(s)-1]
+
+	}
+	return s
+}
+
+func (rf *RF) get_domaincontract(domain_name DomainName) (map[string]string, error) {
+	var err error
+	var response *http.Response
+
+	var uripart string
+
+	uripart = domainname2uripart(domain_name)
+	origuri := fmt.Sprintf(baseURL+"/my/domains/%scontract/", uripart)
+	response, err = rf.client.Get(origuri)
+	rf.doc, err = goquery.NewDocumentFromReader(response.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	if !rf.check_login() {
+		return map[string]string{}, fmt.Errorf("Not logged in")
+	}
+
+	if response.Request.URL.String() != origuri {
+		err := fmt.Errorf("Got redirected. Non existing domain?")
+		log.Println(err)
+		return map[string]string{}, err
+	}
+
+	contract := make(map[string]string)
+
+	rf.doc.Find("table.datastyle > tbody > tr").Each(func(i int, s *goquery.Selection) {
+		k := chop(strings.TrimSpace(s.Find("td:nth-child(1)").Text()), ':')
+		v := strings.TrimSpace(s.Find("td:nth-child(2)").Text())
+
+		if k != "" {
+			contract[k] = v
+		}
+	})
+
+	if val, ok := rf.Domains[domain_name]; ok {
+		val.Contract = contract
+		rf.Domains[domain_name] = val
+	}
+	return contract, nil
 }
 
 func main() {
@@ -276,14 +335,13 @@ func main() {
 		fmt.Printf("key[%s] value[%s]\n", k, v.uri)
 
 	}
-	rf.SaveSession()
 
 	fmt.Println(domainname2uripart("rootcamp.net"))
 	d, _ := rf.get_domain("rootcamp.net")
 	s, _ := json.MarshalIndent(d, "", "  ")
+	//	fmt.Println(string(s))
+	e, _ := rf.get_domaincontract("modelzoom.net")
+	s, _ = json.MarshalIndent(e, "", "  ")
 	fmt.Println(string(s))
 
-	os.Exit(3)
-
-	//	log.Println("Number of bytes copied to STDOUT:", n)
 }
