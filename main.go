@@ -4,6 +4,7 @@ package main
 //       invalidating a Cookie (logout) is not an option, as hitting the rate limit on RegFish.de is too easy
 
 import (
+	"crypto/md5"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -97,7 +98,8 @@ func (rf *RF) check_login() bool {
 }
 
 func (rf *RF) Login(username string, password string) (bool, error) {
-	jar, _ := cookiejar.New(&cookiejar.Options{PersistSessionCookies: true})
+	md5username := fmt.Sprintf("%x", md5.Sum([]byte(username)))
+	jar, _ := cookiejar.New(&cookiejar.Options{PersistSessionCookies: true, Filename: cookiejar.DefaultCookieFile() + "_" + md5username})
 	rf.jar = *jar
 	rf.client = &http.Client{
 		Timeout: 30 * time.Second,
