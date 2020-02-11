@@ -354,22 +354,23 @@ var Usage = func() {
 }
 
 func main() {
-	log.SetOutput(os.Stderr)
+	log.SetOutput(ioutil.Discard)
+
 	// flag.CommandLine.SetOutput(os.Stdout)
 	flag.Usage = Usage
 
 	opt_l := flag.Bool("l", false, "list domains")
 	opt_a := flag.Bool("a", false, "all domain data as JSON")
 	opt_d := flag.Bool("d", false, "dump domain data as JSON")
-	opt_q := flag.Bool("q", false, "quiet mode, no log")
+	opt_v := flag.Bool("v", false, "verbose mode, log on STDERR")
 
 	flag.Parse()
 
 	if *opt_l == false && *opt_a == false && *opt_d == false && flag.NArg() == 0 {
 		flag.Usage()
 	}
-	if *opt_q {
-		log.SetOutput(ioutil.Discard)
+	if *opt_v {
+		log.SetOutput(os.Stderr)
 	}
 	if *opt_d && flag.NArg() == 0 {
 		fmt.Fprintf(os.Stderr, "Need domain name(s) as arguments for -d flag\n\n")
