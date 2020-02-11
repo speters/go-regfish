@@ -1,12 +1,18 @@
 package main
 
+// TODO: encrypt cookiejar with u/p
+//       invalidating a Cookie (logout) is not an option, as hitting the rate limit on RegFish.de is too easy
+
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -104,6 +110,10 @@ func (rf *RF) Login(username string, password string) (bool, error) {
 	if success {
 		log.Println("Logged in")
 	}
+
+	domains := make(Domains)
+	rf.Domains = domains
+
 	return success, err
 }
 
@@ -150,7 +160,6 @@ func (rf *RF) SaveSession() {
 
 func (rf *RF) get_domainlist() error {
 	domains := make(Domains)
-
 	var err error
 	var response *http.Response
 
@@ -190,7 +199,9 @@ func (rf *RF) get_domainlist() error {
 			break
 		}
 	}
-	rf.Domains = domains
+	for k, v := range domains {
+		rf.Domains[k] = v
+	}
 	return nil
 }
 
@@ -267,13 +278,7 @@ func (rf *RF) get_domain(domain_name DomainName) (Domain, error) {
 		}
 	})
 
-	if val, ok := rf.Domains[domain_name]; ok {
-		val.RRs = domain.RRs
-		val.Name = domain_name
-		val.uri = uripart
-
-		rf.Domains[domain_name] = val
-	}
+	rf.Domains[domain_name] = Domain{Name: domain_name, RRs: domain.RRs, uri: uripart}
 	return domain, nil
 }
 
@@ -335,17 +340,64 @@ func (rf *RF) GetAll() error {
 	return err
 }
 
+func PrintDomainList(l *Domains) {
+	for k, _ := range *l {
+		fmt.Printf("%v\n", k)
+	}
+}
+
+var Usage = func() {
+	fmt.Fprintf(flag.CommandLine.Output(), "Usage: %s [options] [domain...]\n", path.Base(os.Args[0]))
+	flag.PrintDefaults()
+	os.Exit(2)
+
+}
+
 func main() {
 	log.SetOutput(os.Stderr)
+	// flag.CommandLine.SetOutput(os.Stdout)
+	flag.Usage = Usage
+
+	opt_l := flag.Bool("l", false, "list domains")
+	opt_a := flag.Bool("a", false, "all domain data as JSON")
+	opt_d := flag.Bool("d", false, "dump domain data as JSON")
+	opt_q := flag.Bool("q", false, "quiet mode, no log")
+
+	flag.Parse()
+
+	if *opt_l == false && *opt_a == false && *opt_d == false && flag.NArg() == 0 {
+		flag.Usage()
+	}
+	if *opt_q {
+		log.SetOutput(ioutil.Discard)
+	}
+	if *opt_d && flag.NArg() == 0 {
+		fmt.Fprintf(os.Stderr, "Need domain name(s) as arguments for -d flag\n\n")
+		flag.Usage()
+	}
 
 	rf := &RF{}
 	rf.Login(username, password)
 	defer rf.SaveSession()
 
-	rf.get_domainlist()
-	rf.GetAll()
-
-	s, _ := json.MarshalIndent(rf.Domains, "", "  ")
-	fmt.Println(string(s))
-
+	done := false
+	if *opt_l {
+		rf.get_domainlist()
+		PrintDomainList(&rf.Domains)
+		done = true
+	}
+	if !done && *opt_a {
+		rf.GetAll()
+		s, _ := json.MarshalIndent(rf.Domains, "", "  ")
+		fmt.Println(string(s))
+		done = true
+	}
+	if !done && *opt_d {
+		for _, v := range flag.Args() {
+			rf.get_domain(DomainName(v))
+			rf.get_domaincontract(DomainName(v))
+		}
+		s, _ := json.MarshalIndent(rf.Domains, "", "  ")
+		fmt.Println(string(s))
+	}
 }
