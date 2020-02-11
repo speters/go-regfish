@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -325,23 +326,26 @@ func (rf *RF) get_domaincontract(domain_name DomainName) (map[string]string, err
 	return contract, nil
 }
 
+func (rf *RF) GetAll() error {
+	err := rf.get_domainlist()
+	for k, _ := range rf.Domains {
+		_, err = rf.get_domain(k)
+		_, err = rf.get_domaincontract(k)
+	}
+	return err
+}
+
 func main() {
+	log.SetOutput(os.Stderr)
+
 	rf := &RF{}
 	rf.Login(username, password)
 	defer rf.SaveSession()
 
 	rf.get_domainlist()
-	for k, v := range rf.Domains {
-		fmt.Printf("key[%s] value[%s]\n", k, v.uri)
+	rf.GetAll()
 
-	}
-
-	fmt.Println(domainname2uripart("rootcamp.net"))
-	d, _ := rf.get_domain("rootcamp.net")
-	s, _ := json.MarshalIndent(d, "", "  ")
-	//	fmt.Println(string(s))
-	e, _ := rf.get_domaincontract("modelzoom.net")
-	s, _ = json.MarshalIndent(e, "", "  ")
+	s, _ := json.MarshalIndent(rf.Domains, "", "  ")
 	fmt.Println(string(s))
 
 }
