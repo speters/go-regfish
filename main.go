@@ -14,13 +14,18 @@ import (
 	"net/url"
 	"os"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/PuerkitoBio/goquery"
+	// TODO: use a better config/ini/TOML parser, as this one does not support quoted strings
+	"github.com/alyu/configparser"
 	cookiejar "github.com/orirawlings/persistent-cookiejar"
 )
+
+const configpath = "~/.smtpclient.ini"
 
 type (
 	DomainName string
@@ -61,10 +66,6 @@ type (
 )
 
 const baseURL = "https://www.regfish.de"
-
-// included from credentials.go:
-// const username = ""
-// const password = ""
 
 type RF struct {
 	jar       cookiejar.Jar
@@ -366,12 +367,31 @@ func main() {
 	opt_a := flag.Bool("a", false, "all domain data as JSON")
 	opt_d := flag.Bool("d", false, "dump domain data as JSON")
 	opt_v := flag.Bool("v", false, "verbose mode, log on STDERR")
+	opt_c := flag.String("c", configpath, "path to config file")
 
 	flag.Parse()
 
 	if *opt_l == false && *opt_a == false && *opt_d == false && *opt_L == false && flag.NArg() == 0 {
 		flag.Usage()
 	}
+
+	if strings.HasPrefix(*opt_c, "~/") {
+		s := *opt_c
+		*opt_c = filepath.Join(os.Getenv("HOME"), s[2:])
+	}
+	config, err := configparser.Read(*opt_c)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Could not open config file %s.\n", *opt_c)
+		os.Exit(1)
+	}
+	section, err := config.Section("go-regfish")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: No section \"regfish_api\" in config file.\n")
+		os.Exit(1)
+	}
+	username := section.ValueOf("username")
+	password := section.ValueOf("password")
+
 	if *opt_v {
 		log.SetOutput(os.Stderr)
 	}
