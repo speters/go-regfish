@@ -362,13 +362,14 @@ func main() {
 	flag.Usage = Usage
 
 	opt_l := flag.Bool("l", false, "list domains")
+	opt_L := flag.Bool("L", false, "list domains with contract end")
 	opt_a := flag.Bool("a", false, "all domain data as JSON")
 	opt_d := flag.Bool("d", false, "dump domain data as JSON")
 	opt_v := flag.Bool("v", false, "verbose mode, log on STDERR")
 
 	flag.Parse()
 
-	if *opt_l == false && *opt_a == false && *opt_d == false && flag.NArg() == 0 {
+	if *opt_l == false && *opt_a == false && *opt_d == false && *opt_L == false && flag.NArg() == 0 {
 		flag.Usage()
 	}
 	if *opt_v {
@@ -384,9 +385,16 @@ func main() {
 	defer rf.SaveSession()
 
 	done := false
-	if *opt_l {
+	if *opt_l || *opt_L {
 		rf.get_domainlist()
-		PrintDomainList(&rf.Domains)
+		for k, _ := range rf.Domains {
+			if !*opt_L {
+				fmt.Printf("%v\n", k)
+			} else {
+				rf.get_domaincontract(k)
+				fmt.Printf("%v\t\t%v\n", k, rf.Domains[k].Contract["Kündigungsfrist"])
+			}
+		}
 		done = true
 	}
 	if !done && *opt_a {
